@@ -1,22 +1,25 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Flappy Squad — Multiplayer</title>
 <style>
 :root{font-family:system-ui,Segoe UI,sans-serif;color:#172033;background:#eef6ff}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
 .shell{width:min(960px,100%);background:white;border-radius:22px;padding:24px;box-shadow:0 18px 60px #24436b20}
 header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 h1{margin:0;font-size:clamp(24px,4vw,36px)}.tag{background:#e3f7ec;color:#167447;padding:7px 12px;border-radius:999px;font-weight:700;font-size:13px}
 .controls{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}input,button{border:1px solid #d5dfed;border-radius:10px;padding:11px 13px;font:inherit}
 input{min-width:120px;flex:1}button{background:#315ee8;color:white;border:0;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:default}
 #game{display:block;width:100%;height:auto;border-radius:16px;background:#a8e8ff;border:1px solid #d4e8f5;touch-action:manipulation}
+.touch-flap{display:none;width:100%;min-height:58px;margin-top:10px;border-radius:14px;background:#ffb52e;color:#493300;font-size:19px;letter-spacing:.06em;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+.touch-flap:disabled{opacity:.55}
 .bottom{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.panel{background:#f5f8fc;padding:14px 16px;border-radius:12px}.panel h2{font-size:15px;margin:0 0 8px}.panel p{margin:4px 0;color:#536078;font-size:14px}
 #players{display:flex;gap:8px;flex-wrap:wrap}.player{background:white;border:1px solid #e0e7f0;border-radius:9px;padding:7px 10px;font-size:13px}
 #results{margin-top:16px}.results-heading{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.winner-badge{background:#fff4d6;color:#825600;padding:6px 10px;border-radius:999px;font-weight:800;font-size:13px}.results-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}.results-table th,.results-table td{text-align:left;padding:9px 10px;border-bottom:1px solid #e4eaf2}.results-table th{color:#64718a;font-size:12px;text-transform:uppercase;letter-spacing:.04em}.results-table tr:first-child td{font-weight:700}.results-table td:last-child,.results-table th:last-child{text-align:right}
 #status{font-weight:700;color:#315ee8}.hint{font-size:13px;color:#68758c;margin:12px 2px 0}
-@media(max-width:620px){.bottom{grid-template-columns:1fr}.shell{padding:14px}}
+@media(max-width:620px){.bottom{grid-template-columns:1fr}.shell{padding:14px;border-radius:16px}.controls{margin:12px 0}.controls input{flex-basis:calc(50% - 8px)}.controls button{flex:1}.tag{font-size:11px}.touch-flap{display:block}.hint{line-height:1.4}}
+@media(pointer:coarse){.touch-flap{display:block}}
 </style>
 </head>
 <body>
@@ -28,6 +31,7 @@ input{min-width:120px;flex:1}button{background:#315ee8;color:white;border:0;font
 <button id="join">Join room</button><button id="restart" disabled>Restart round</button>
 </div>
 <canvas id="game" width="800" height="500" aria-label="Flappy Bird multiplayer game"></canvas>
+<button id="flap" class="touch-flap" type="button" aria-label="Flap your bird" disabled>FLAP</button>
 <div class="bottom">
 <section class="panel"><h2>Room & connection</h2><p id="status">Not connected — join a room to play.</p><p>Controls: <b>Space</b>, click, or tap to flap.</p></section>
 <section class="panel"><h2>Players in this room</h2><div id="players"><span class="player">Waiting for players…</span></div></section>
@@ -38,7 +42,7 @@ input{min-width:120px;flex:1}button{background:#315ee8;color:white;border:0;font
 <script>
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
 const nameInput=document.getElementById('name'),roomInput=document.getElementById('room');
-const joinBtn=document.getElementById('join'),restartBtn=document.getElementById('restart');
+const joinBtn=document.getElementById('join'),restartBtn=document.getElementById('restart'),flapBtn=document.getElementById('flap');
 const statusEl=document.getElementById('status'),playersEl=document.getElementById('players');
 const resultsEl=document.getElementById('results'),winnerEl=document.getElementById('winner'),scoreboardEl=document.getElementById('scoreboard');
 let ws=null,myId=null,state=null,connected=false;
@@ -48,7 +52,7 @@ function connect(){
   const scheme=location.protocol==='https:'?'wss:':'ws:';
   ws=new WebSocket(`${scheme}//${location.host}/game?name=${encodeURIComponent(name)}&room=${encodeURIComponent(room)}`);
   statusEl.textContent='Connecting to room '+room.toUpperCase()+'…';
-  ws.onopen=()=>{connected=true;joinBtn.textContent='Reconnect';statusEl.textContent='Connected · Room '+room.toUpperCase();};
+  ws.onopen=()=>{connected=true;flapBtn.disabled=false;joinBtn.textContent='Reconnect';statusEl.textContent='Connected · Room '+room.toUpperCase();};
   ws.onmessage=(event)=>{
     const next=JSON.parse(event.data);if(next.type!=='state')return;
     state=next;
@@ -57,7 +61,7 @@ function connect(){
     renderPlayers();renderResults();draw();
     restartBtn.disabled=!(state.players.length && state.players.every(p=>!p.alive));
   };
-  ws.onclose=(event)=>{connected=false;statusEl.textContent=event.code===4001?'That bird name is already taken in this room. Choose another name and join again.':'Disconnected. Click Join room to reconnect.';};
+  ws.onclose=(event)=>{connected=false;flapBtn.disabled=true;statusEl.textContent=event.code===4001?'That bird name is already taken in this room. Choose another name and join again.':'Disconnected. Click Join room to reconnect.';};
   ws.onerror=()=>{statusEl.textContent='Connection error — is the Java server running?';};
 }
 function send(type){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type}));}
@@ -65,6 +69,7 @@ function flap(){if(connected)send('flap');}
 joinBtn.addEventListener('click',connect);
 restartBtn.addEventListener('click',()=>send('restart'));
 canvas.addEventListener('pointerdown',e=>{e.preventDefault();flap();});
+flapBtn.addEventListener('click',flap);
 window.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();flap();}});
 function draw(){
   ctx.clearRect(0,0,800,500);
@@ -81,7 +86,7 @@ function draw(){
       ctx.fillStyle=palette[i%palette.length];ctx.beginPath();ctx.ellipse(x,y,15,12,0,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+6,y-4,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#172033';ctx.beginPath();ctx.arc(x+8,y-4,2,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#f06c42';ctx.beginPath();ctx.moveTo(x+13,y);ctx.lineTo(x+24,y+3);ctx.lineTo(x+13,y+6);ctx.fill();
-      ctx.globalAlpha=1;ctx.fillStyle='#172033';ctx.font='bold 12px system-ui';ctx.fillText(`${p.name} · ${p.score}`,x+25,y-12);
+      ctx.globalAlpha=1;ctx.fillStyle='#172033';ctx.font='bold 18px system-ui';ctx.fillText(`${p.name} · ${p.score}`,x+25,y-12);
     });
     if(state.players.length&&state.players.every(p=>!p.alive)){
       const best=Math.max(...state.players.map(p=>p.score));

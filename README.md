@@ -1,6 +1,6 @@
 # Flappy Squad — Java Multiplayer MVP
 
-A small real-time multiplayer Flappy Bird-style game built with Java 21, Spring Boot, WebSockets, and a plain HTML Canvas frontend. No database or frontend build tooling is required.
+A small real-time multiplayer Flappy Bird-style game built with Java 17, Spring Boot, WebSockets, and a plain HTML Canvas frontend. No database or frontend build tooling is required.
 
 ## MVP features
 - Room codes: players using the same room code share one game world.
@@ -11,7 +11,7 @@ A small real-time multiplayer Flappy Bird-style game built with Java 21, Spring 
 - Browser controls: Space, Up Arrow, click, or tap.
 
 ## Requirements
-- JDK 21+
+- JDK 17+
 - Maven 3.9+ (or use your IDE's Maven integration)
 
 ## Run locally
@@ -22,6 +22,15 @@ mvn spring-boot:run
 ```
 
 Open http://localhost:8080. Enter a name and room code, then click **Join room**. Open another browser tab at the same URL and use the same room code to test multiplayer.
+
+## Play from a phone on the same Wi-Fi
+
+1. Start the server on your computer with `mvn spring-boot:run` and leave it running.
+2. Find your computer's IPv4 address (`ipconfig` on Windows; use the active Wi-Fi adapter address).
+3. Connect your phone to the same Wi-Fi network and open `http://<computer-ip>:8080` in its browser, replacing `<computer-ip>` with that IPv4 address (for example, `http://192.168.1.25:8080`).
+4. If the page does not load, allow Java or port 8080 through the computer's firewall on the private network.
+
+The game uses the page's host for its WebSocket connection, so the phone connects back to the computer automatically. The on-screen **FLAP** button and tapping the game canvas work on touch screens. This LAN setup is for devices on the same trusted network; use HTTPS and suitable network security before exposing the server to the internet.
 
 ## Package as a JAR
 
