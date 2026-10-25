@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: flappy-bird-multiplayer
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /

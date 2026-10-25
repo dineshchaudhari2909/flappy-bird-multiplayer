@@ -32,6 +32,10 @@ Open http://localhost:8080. Enter a name and room code, then click **Join room**
 
 The game uses the page's host for its WebSocket connection, so the phone connects back to the computer automatically. The on-screen **FLAP** button and tapping the game canvas work on touch screens. This LAN setup is for devices on the same trusted network; use HTTPS and suitable network security before exposing the server to the internet.
 
+## Deploy on Render
+
+This repository includes a `Dockerfile` and `render.yaml` for a free Render web service in Singapore. In the Render Dashboard, choose **New > Blueprint**, connect this GitHub repository, and apply the Blueprint. Render builds the Java app from the Dockerfile and uses its assigned `PORT`; WebSocket traffic shares the web service port. Free services can spin down after 15 minutes without HTTP requests or WebSocket messages and may take about a minute to wake up.
+
 ## Package as a JAR
 
 ```bash
