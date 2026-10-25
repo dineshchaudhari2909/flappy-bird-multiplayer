@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flappy Squad — Multiplayer</title>
+<style>
+:root{font-family:system-ui,Segoe UI,sans-serif;color:#172033;background:#eef6ff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px}
+.shell{width:min(960px,100%);background:white;border-radius:22px;padding:24px;box-shadow:0 18px 60px #24436b20}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:clamp(24px,4vw,36px)}.tag{background:#e3f7ec;color:#167447;padding:7px 12px;border-radius:999px;font-weight:700;font-size:13px}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}input,button{border:1px solid #d5dfed;border-radius:10px;padding:11px 13px;font:inherit}
+input{min-width:120px;flex:1}button{background:#315ee8;color:white;border:0;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:default}
+#game{display:block;width:100%;height:auto;border-radius:16px;background:#a8e8ff;border:1px solid #d4e8f5;touch-action:manipulation}
+.bottom{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.panel{background:#f5f8fc;padding:14px 16px;border-radius:12px}.panel h2{font-size:15px;margin:0 0 8px}.panel p{margin:4px 0;color:#536078;font-size:14px}
+#players{display:flex;gap:8px;flex-wrap:wrap}.player{background:white;border:1px solid #e0e7f0;border-radius:9px;padding:7px 10px;font-size:13px}
+#results{margin-top:16px}.results-heading{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.winner-badge{background:#fff4d6;color:#825600;padding:6px 10px;border-radius:999px;font-weight:800;font-size:13px}.results-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}.results-table th,.results-table td{text-align:left;padding:9px 10px;border-bottom:1px solid #e4eaf2}.results-table th{color:#64718a;font-size:12px;text-transform:uppercase;letter-spacing:.04em}.results-table tr:first-child td{font-weight:700}.results-table td:last-child,.results-table th:last-child{text-align:right}
+#status{font-weight:700;color:#315ee8}.hint{font-size:13px;color:#68758c;margin:12px 2px 0}
+@media(max-width:620px){.bottom{grid-template-columns:1fr}.shell{padding:14px}}
+</style>
+</head>
+<body>
+<main class="shell">
+<header><div><h1>🐤 Flappy Squad</h1><div style="color:#63718a;margin-top:4px">Same pipes. Different birds. Compete with friends.</div></div><span class="tag">JAVA BACKEND · REAL-TIME</span></header>
+<div class="controls">
+<input id="name" maxlength="18" placeholder="Your bird name" value="Player">
+<input id="room" maxlength="16" placeholder="Room code" value="BIRDS">
+<button id="join">Join room</button><button id="restart" disabled>Restart round</button>
+</div>
+<canvas id="game" width="800" height="500" aria-label="Flappy Bird multiplayer game"></canvas>
+<div class="bottom">
+<section class="panel"><h2>Room & connection</h2><p id="status">Not connected — join a room to play.</p><p>Controls: <b>Space</b>, click, or tap to flap.</p></section>
+<section class="panel"><h2>Players in this room</h2><div id="players"><span class="player">Waiting for players…</span></div></section>
+</div>
+<section class="panel" id="results" hidden aria-live="polite"><div class="results-heading"><h2 style="margin:0">🏆 Round results</h2><span class="winner-badge" id="winner"></span></div><table class="results-table"><thead><tr><th>Player</th><th>Score</th></tr></thead><tbody id="scoreboard"></tbody></table></section>
+<p class="hint">Open this page in another tab or share the room code with someone on the same deployed server. The server controls bird physics, pipes and scores.</p>
+</main>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const nameInput=document.getElementById('name'),roomInput=document.getElementById('room');
+const joinBtn=document.getElementById('join'),restartBtn=document.getElementById('restart');
+const statusEl=document.getElementById('status'),playersEl=document.getElementById('players');
+const resultsEl=document.getElementById('results'),winnerEl=document.getElementById('winner'),scoreboardEl=document.getElementById('scoreboard');
+let ws=null,myId=null,state=null,connected=false;
+function connect(){
+  if(ws) ws.close();
+  const name=(nameInput.value.trim()||'Player').slice(0,18),room=(roomInput.value.trim()||'LOBBY').slice(0,16);
+  const scheme=location.protocol==='https:'?'wss:':'ws:';
+  ws=new WebSocket(`${scheme}//${location.host}/game?name=${encodeURIComponent(name)}&room=${encodeURIComponent(room)}`);
+  statusEl.textContent='Connecting to room '+room.toUpperCase()+'…';
+  ws.onopen=()=>{connected=true;joinBtn.textContent='Reconnect';statusEl.textContent='Connected · Room '+room.toUpperCase();};
+  ws.onmessage=(event)=>{
+    const next=JSON.parse(event.data);if(next.type!=='state')return;
+    state=next;
+    if(!myId&&next.players.length) myId=next.players.find(p=>p.name===name)?.id||next.players[next.players.length-1].id;
+    // Re-resolve the local player by the assigned name; IDs are server-generated.
+    renderPlayers();renderResults();draw();
+    restartBtn.disabled=!(state.players.length && state.players.every(p=>!p.alive));
+  };
+  ws.onclose=(event)=>{connected=false;statusEl.textContent=event.code===4001?'That bird name is already taken in this room. Choose another name and join again.':'Disconnected. Click Join room to reconnect.';};
+  ws.onerror=()=>{statusEl.textContent='Connection error — is the Java server running?';};
+}
+function send(type){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type}));}
+function flap(){if(connected)send('flap');}
+joinBtn.addEventListener('click',connect);
+restartBtn.addEventListener('click',()=>send('restart'));
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();flap();});
+window.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();flap();}});
+function draw(){
+  ctx.clearRect(0,0,800,500);
+  const sky=ctx.createLinearGradient(0,0,0,500);sky.addColorStop(0,'#8ce0ff');sky.addColorStop(1,'#e4fbff');ctx.fillStyle=sky;ctx.fillRect(0,0,800,500);
+  // soft clouds
+  ctx.fillStyle='#ffffff90';[[100,85],[360,125],[650,70]].forEach(([x,y])=>{ctx.beginPath();ctx.arc(x,y,22,0,7);ctx.arc(x+22,y-8,28,0,7);ctx.arc(x+48,y,20,0,7);ctx.fill();});
+  if(state){
+    for(const pipe of state.pipes||[]){
+      pipeShape(pipe.x,0,65,pipe.gapY,true);pipeShape(pipe.x,pipe.gapY+155,65,500-(pipe.gapY+155),false);
+    }
+    const palette=['#ffb52e','#ff6d73','#9165e8','#22b8a4','#ed76bb','#6488f5'];
+    (state.players||[]).forEach((p,i)=>{
+      const y=Math.max(12,Math.min(488,p.y)),x=150+(i%4)*0;ctx.globalAlpha=p.alive?1:.42;
+      ctx.fillStyle=palette[i%palette.length];ctx.beginPath();ctx.ellipse(x,y,15,12,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+6,y-4,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#172033';ctx.beginPath();ctx.arc(x+8,y-4,2,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#f06c42';ctx.beginPath();ctx.moveTo(x+13,y);ctx.lineTo(x+24,y+3);ctx.lineTo(x+13,y+6);ctx.fill();
+      ctx.globalAlpha=1;ctx.fillStyle='#172033';ctx.font='bold 12px system-ui';ctx.fillText(`${p.name} · ${p.score}`,x+25,y-12);
+    });
+    if(state.players.length&&state.players.every(p=>!p.alive)){
+      const best=Math.max(...state.players.map(p=>p.score));
+      const winners=state.players.filter(p=>p.score===best).map(p=>p.name);
+      ctx.fillStyle='#14223dcc';ctx.fillRect(130,170,540,140);ctx.fillStyle='white';ctx.textAlign='center';
+      ctx.font='bold 25px system-ui';ctx.fillText(winners.length>1?'Round tied!':`${winners[0]} wins!`,400,215);
+      ctx.font='17px system-ui';ctx.fillText(`${best} points · See the full scoreboard below`,400,249);
+      ctx.font='14px system-ui';ctx.fillText('Press Restart round to fly again',400,278);ctx.textAlign='left';
+    }else if(!connected){centerText('Join a room to start flying');}
+  }else centerText('Join a room to start flying');
+  // ground
+  ctx.fillStyle='#6fca73';ctx.fillRect(0,480,800,20);ctx.fillStyle='#4aaa61';for(let x=0;x<800;x+=24)ctx.fillRect(x,480,12,4);
+}
+function pipeShape(x,y,w,h,top){
+  if(h<=0)return;ctx.fillStyle='#2eaf68';ctx.fillRect(x,y,w,h);ctx.fillStyle='#218c53';ctx.fillRect(x+w-9,y,9,h);
+  ctx.fillStyle='#48ce7f';ctx.fillRect(x,y,8,h);
+  const capH=18,capY=top?y+h-capH:y;
+  ctx.fillStyle='#218c53';ctx.fillRect(x-5,capY,w+10,capH);ctx.fillStyle='#54d98a';ctx.fillRect(x-5,capY,w+10,5);
+}
+function centerText(t){ctx.fillStyle='#17344f';ctx.textAlign='center';ctx.font='bold 23px system-ui';ctx.fillText(t,400,250);ctx.textAlign='left';}
+function renderPlayers(){
+  if(!state)return;
+  playersEl.innerHTML='';
+  state.players.forEach(p=>{const el=document.createElement('span');el.className='player';el.textContent=`${p.name} · ${p.score}${p.alive?'':' · out'}`;playersEl.appendChild(el);});
+  if(!state.players.length)playersEl.textContent='Waiting for players…';
+}
+function roundComplete(){return !!(state&&state.players.length&&state.players.every(p=>!p.alive));}
+function renderResults(){
+  if(!roundComplete()){resultsEl.hidden=true;return;}
+  const best=Math.max(...state.players.map(p=>p.score));
+  const winners=state.players.filter(p=>p.score===best).map(p=>p.name);
+  winnerEl.textContent=`${winners.length>1?'Winners':'Winner'}: ${winners.join(', ')}`;
+  scoreboardEl.replaceChildren();
+  [...state.players].sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name)).forEach((p,i)=>{
+    const row=document.createElement('tr');
+    const playerCell=document.createElement('td'),scoreCell=document.createElement('td');
+    playerCell.textContent=`${i===0?'🏆 ':''}${p.name}`;scoreCell.textContent=String(p.score);
+    row.append(playerCell,scoreCell);scoreboardEl.appendChild(row);
+  });
+  resultsEl.hidden=false;
+}
+draw();
+</script>
+</body>
+</html>
