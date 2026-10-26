@@ -38,6 +38,9 @@ input{min-width:120px;flex:1}button{background:#315ee8;color:white;border:0;font
 </div>
 <section class="panel" id="results" hidden aria-live="polite"><div class="results-heading"><h2 style="margin:0">🏆 Round results</h2><span class="winner-badge" id="winner"></span></div><table class="results-table"><thead><tr><th>Player</th><th>Score</th></tr></thead><tbody id="scoreboard"></tbody></table></section>
 <p class="hint">Open this page in another tab or share the room code with someone on the same deployed server. The server controls bird physics, pipes and scores.</p>
+<audio id="music-lobby" loop preload="auto"><source src="/audio/lobby.wav" type="audio/wav"></audio>
+<audio id="music-flight" loop preload="auto"><source src="/audio/flight.wav" type="audio/wav"></audio>
+<audio id="music-stopped" loop preload="auto"><source src="/audio/stopped.wav" type="audio/wav"></audio>
 </main>
 <script>
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
@@ -45,8 +48,37 @@ const nameInput=document.getElementById('name'),roomInput=document.getElementByI
 const joinBtn=document.getElementById('join'),restartBtn=document.getElementById('restart'),flapBtn=document.getElementById('flap');
 const statusEl=document.getElementById('status'),playersEl=document.getElementById('players');
 const resultsEl=document.getElementById('results'),winnerEl=document.getElementById('winner'),scoreboardEl=document.getElementById('scoreboard');
-let ws=null,myId=null,state=null,connected=false;
+let ws=null,myId=null,state=null,connected=false,audioContext=null;
+const musicTracks={lobby:document.getElementById('music-lobby'),flight:document.getElementById('music-flight'),stopped:document.getElementById('music-stopped')};
+let activeMusic=null;
+function setMusic(mode){
+  if(activeMusic===mode)return;
+  activeMusic=mode;
+  Object.entries(musicTracks).forEach(([name,track])=>{
+    if(name===mode){track.volume=1;track.play().catch(()=>{});}
+    else{track.pause();track.currentTime=0;}
+  });
+}
+function playTone(frequency,duration,volume,type='sine',startAt=0){
+  if(!audioContext)return;
+  const oscillator=audioContext.createOscillator(),gain=audioContext.createGain();
+  const start=audioContext.currentTime+startAt;
+  oscillator.type=type;oscillator.frequency.setValueAtTime(frequency,start);
+  gain.gain.setValueAtTime(0.0001,start);gain.gain.exponentialRampToValueAtTime(volume,start+0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001,start+duration);
+  oscillator.connect(gain);gain.connect(audioContext.destination);oscillator.start(start);oscillator.stop(start+duration+0.02);
+}
+function playFlapSound(){playTone(620,0.09,1,'triangle');}
+function playResultSound(){playTone(523,0.18,1,'sine');playTone(392,0.28,1,'sine',0.17);}
+function enableAudio(){
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return;
+  if(!audioContext)audioContext=new AudioContextClass();
+  if(audioContext.state==='suspended')audioContext.resume();
+}
 function connect(){
+  enableAudio();
+  setMusic('lobby');
   if(ws) ws.close();
   const name=(nameInput.value.trim()||'Player').slice(0,18),room=(roomInput.value.trim()||'LOBBY').slice(0,16);
   const scheme=location.protocol==='https:'?'wss:':'ws:';
@@ -55,17 +87,19 @@ function connect(){
   ws.onopen=()=>{connected=true;flapBtn.disabled=false;joinBtn.textContent='Reconnect';statusEl.textContent='Connected · Room '+room.toUpperCase();};
   ws.onmessage=(event)=>{
     const next=JSON.parse(event.data);if(next.type!=='state')return;
-    state=next;
+    const wasComplete=roundComplete();state=next;
+    setMusic(roundComplete()?'stopped':(state.started?'flight':'lobby'));
     if(!myId&&next.players.length) myId=next.players.find(p=>p.name===name)?.id||next.players[next.players.length-1].id;
     // Re-resolve the local player by the assigned name; IDs are server-generated.
     renderPlayers();renderResults();draw();
+    if(!wasComplete&&roundComplete())playResultSound();
     restartBtn.disabled=!(state.players.length && state.players.every(p=>!p.alive));
   };
-  ws.onclose=(event)=>{connected=false;flapBtn.disabled=true;statusEl.textContent=event.code===4001?'That bird name is already taken in this room. Choose another name and join again.':'Disconnected. Click Join room to reconnect.';};
+  ws.onclose=(event)=>{connected=false;flapBtn.disabled=true;setMusic('lobby');statusEl.textContent=event.code===4001?'That bird name is already taken in this room. Choose another name and join again.':'Disconnected. Click Join room to reconnect.';};
   ws.onerror=()=>{statusEl.textContent='Connection error — is the Java server running?';};
 }
 function send(type){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type}));}
-function flap(){if(connected)send('flap');}
+function flap(){if(connected){enableAudio();playFlapSound();send('flap');}}
 joinBtn.addEventListener('click',connect);
 restartBtn.addEventListener('click',()=>send('restart'));
 canvas.addEventListener('pointerdown',e=>{e.preventDefault();flap();});
