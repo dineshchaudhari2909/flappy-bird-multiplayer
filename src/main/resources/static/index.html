@@ -49,6 +49,8 @@ const joinBtn=document.getElementById('join'),restartBtn=document.getElementById
 const statusEl=document.getElementById('status'),playersEl=document.getElementById('players');
 const resultsEl=document.getElementById('results'),winnerEl=document.getElementById('winner'),scoreboardEl=document.getElementById('scoreboard');
 let ws=null,myId=null,state=null,connected=false,audioContext=null;
+let wingFlapStartedAt=-Infinity;
+const wingFlapDuration=260;
 const musicTracks={lobby:document.getElementById('music-lobby'),flight:document.getElementById('music-flight'),stopped:document.getElementById('music-stopped')};
 let activeMusic=null;
 function setMusic(mode){
@@ -99,7 +101,7 @@ function connect(){
   ws.onerror=()=>{statusEl.textContent='Connection error — is the Java server running?';};
 }
 function send(type){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type}));}
-function flap(){if(connected){enableAudio();playFlapSound();send('flap');}}
+function flap(){if(connected){enableAudio();wingFlapStartedAt=performance.now();draw();playFlapSound();send('flap');}}
 joinBtn.addEventListener('click',connect);
 restartBtn.addEventListener('click',()=>send('restart'));
 canvas.addEventListener('pointerdown',e=>{e.preventDefault();flap();});
@@ -117,6 +119,11 @@ function draw(){
     const palette=['#ffb52e','#ff6d73','#9165e8','#22b8a4','#ed76bb','#6488f5'];
     (state.players||[]).forEach((p,i)=>{
       const y=Math.max(12,Math.min(488,p.y)),x=150+(i%4)*0;ctx.globalAlpha=p.alive?1:.42;
+      const flapProgress=Math.max(0,Math.min(1,(performance.now()-wingFlapStartedAt)/wingFlapDuration));
+      const wingAngle=p.id===myId&&flapProgress<1?0.45-Math.sin(flapProgress*Math.PI)*1.35:0.16;
+      ctx.save();ctx.translate(x-3,y+2);ctx.rotate(wingAngle);ctx.fillStyle=palette[i%palette.length];ctx.strokeStyle='#ffffffb8';ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(1,1);ctx.quadraticCurveTo(-17,-3,-18,-15);ctx.quadraticCurveTo(-9,-16,-4,-10);ctx.quadraticCurveTo(-2,-17,5,-16);ctx.quadraticCurveTo(8,-9,7,-3);ctx.closePath();ctx.fill();ctx.stroke();
+      ctx.beginPath();ctx.moveTo(-11,-3);ctx.quadraticCurveTo(-7,-9,-4,-11);ctx.moveTo(-7,-1);ctx.quadraticCurveTo(-2,-7,3,-9);ctx.stroke();ctx.restore();
       ctx.fillStyle=palette[i%palette.length];ctx.beginPath();ctx.ellipse(x,y,15,12,0,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+6,y-4,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#172033';ctx.beginPath();ctx.arc(x+8,y-4,2,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#f06c42';ctx.beginPath();ctx.moveTo(x+13,y);ctx.lineTo(x+24,y+3);ctx.lineTo(x+13,y+6);ctx.fill();
